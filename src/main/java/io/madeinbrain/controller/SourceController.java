@@ -1,99 +1,47 @@
 package io.madeinbrain.controller;
 
-import io.madeinbrain.dto.CreateSourceRequest;
-import io.madeinbrain.dto.SourceDTO;
-import io.madeinbrain.entity.Source;
-import io.madeinbrain.entity.User;
-import io.madeinbrain.service.SourceService;
-import io.madeinbrain.service.UserService;
+import io.madeinbrain.domain.Source;
+import io.madeinbrain.dto.SourceDtos;
+import io.madeinbrain.repository.SourceRepository;
+import io.madeinbrain.service.TheoryService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
-import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/sources")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class SourceController {
 
-    @Autowired
-    private SourceService sourceService;
+    private final TheoryService theoryService;
+    private final SourceRepository sourceRepository;
 
-    @Autowired
-    private UserService userService;
-
-    @GetMapping("/theory/{theoryId}")
-    public ResponseEntity<List<SourceDTO>> getSourcesByTheoryId(@PathVariable Long theoryId) {
-        List<SourceDTO> sources = sourceService.getSourcesByTheoryId(theoryId);
-        return ResponseEntity.ok(sources);
+    @PostMapping
+    @PreAuthorize("hasAnyRole('USER','EXPERT','ADMIN')")
+    public ResponseEntity<SourceDtos.SourceResponse> upsert(@RequestBody SourceDtos.CreateSourceRequest req) {
+        Source s = theoryService.createOrUpdateSource(req);
+        return ResponseEntity.ok(toResp(s));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<SourceDTO> getSourceById(@PathVariable Long id) {
-        return sourceService.getSourceById(id)
-                .map(source -> ResponseEntity.ok().body(source))
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<SourceDtos.SourceResponse> get(@PathVariable UUID id) {
+        Source s = sourceRepository.findById(id).orElseThrow();
+        return ResponseEntity.ok(toResp(s));
     }
 
-    @PostMapping("/theory/{theoryId}")
-    public ResponseEntity<SourceDTO> addSourceToTheory(@PathVariable Long theoryId,
-                                                       @RequestBody CreateSourceRequest request,
-                                                       Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        User user = userService.findByUsername(principal.getName())
-                .orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        return sourceService.addSourceToTheory(theoryId, request, user)
-                .map(source -> ResponseEntity.status(HttpStatus.CREATED).body(source))
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSource(@PathVariable Long id, Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        User user = userService.findByUsername(principal.getName())
-                .orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        if (sourceService.deleteSource(id, user)) {
-            return ResponseEntity.noContent().build();
-        } else {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/type/{type}")
-    public ResponseEntity<List<SourceDTO>> getSourcesByType(@PathVariable Source.SourceType type) {
-        List<SourceDTO> sources = sourceService.getSourcesByType(type);
-        return ResponseEntity.ok(sources);
-    }
-
-    @GetMapping("/reliable")
-    public ResponseEntity<List<SourceDTO>> getHighReliabilitySources(
-            @RequestParam(defaultValue = "90.0") double minReliability) {
-
-        List<SourceDTO> sources = sourceService.getHighReliabilitySources(minReliability);
-        return ResponseEntity.ok(sources);
-    }
-
-    @GetMapping("/types")
-    public ResponseEntity<Source.SourceType[]> getSourceTypes() {
-        return ResponseEntity.ok(Source.SourceType.values());
+    private static SourceDtos.SourceResponse toResp(Source s) {
+        return SourceDtos.SourceResponse.builder()
+                .id(s.getId())
+                .url(s.getUrl())
+                .title(s.getTitle())
+                .type(s.getType())
+                .publisher(s.getPublisher())
+                .publishedAt(s.getPublishedAt())
+                .peerReviewed(s.isPeerReviewed())
+                .intrinsicReliability(s.getIntrinsicReliability())
+                .build();
     }
 }

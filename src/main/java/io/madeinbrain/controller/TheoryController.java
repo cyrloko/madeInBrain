@@ -1,138 +1,53 @@
 package io.madeinbrain.controller;
 
-import io.madeinbrain.dto.CreateTheoryRequest;
-import io.madeinbrain.dto.TheoryDTO;
-import io.madeinbrain.entity.Source;
-import io.madeinbrain.entity.Theory;
-import io.madeinbrain.entity.User;
+import io.madeinbrain.domain.Theory;
+import io.madeinbrain.dto.TheoryDtos;
+import io.madeinbrain.repository.TheoryRepository;
 import io.madeinbrain.service.TheoryService;
-import io.madeinbrain.service.UserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
-import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/theories")
-@CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class TheoryController {
 
-    private TheoryService theoryService;
-
-    private UserService userService;
-
-    @GetMapping
-    public ResponseEntity<Page<TheoryDTO>> getAllTheories(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "confidenceScore") String sortBy) {
-
-        Page<TheoryDTO> theories = theoryService.getAllTheories(page, size, sortBy);
-        return ResponseEntity.ok(theories);
-    }
-
-    @GetMapping("/search")
-    public ResponseEntity<Page<TheoryDTO>> searchTheories(
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) Theory.Category category,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-
-        Page<TheoryDTO> theories = theoryService.searchTheories(q, category, page, size);
-        return ResponseEntity.ok(theories);
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<TheoryDTO> getTheoryById(@PathVariable Long id) {
-        return theoryService.getTheoryById(id)
-                .map(theory -> ResponseEntity.ok().body(theory))
-                .orElse(ResponseEntity.notFound().build());
-    }
+    private final TheoryService theoryService;
+    private final TheoryRepository theoryRepository;
 
     @PostMapping
-    public ResponseEntity<TheoryDTO> createTheory(@RequestBody CreateTheoryRequest request, Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        User user = userService.findByUsername(principal.getName())
-                .orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        try {
-            TheoryDTO theory = theoryService.createTheory(request, user);
-            return ResponseEntity.status(HttpStatus.CREATED).body(theory);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
+    @PreAuthorize("hasAnyRole('USER','EXPERT','ADMIN')")
+    public ResponseEntity<TheoryDtos.TheoryResponse> create(@RequestBody TheoryDtos.CreateTheoryRequest req) {
+        Theory t = theoryService.create(req);
+        return ResponseEntity.ok(toResp(t));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<TheoryDTO> updateTheory(@PathVariable Long id,
-                                                  @RequestBody CreateTheoryRequest request,
-                                                  Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        User user = userService.findByUsername(principal.getName())
-                .orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        //TODO: A corriger
-        return theoryService.updateTheory(id, request, user, new Source())
-                .map(theory -> ResponseEntity.ok().body(theory))
-                .orElse(ResponseEntity.notFound().build());
+    @PreAuthorize("hasAnyRole('USER','EXPERT','ADMIN')")
+    public ResponseEntity<TheoryDtos.TheoryResponse> update(@PathVariable UUID id, @RequestBody TheoryDtos.UpdateTheoryRequest req) {
+        Theory t = theoryService.update(id, req);
+        return ResponseEntity.ok(toResp(t));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTheory(@PathVariable Long id, Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        User user = userService.findByUsername(principal.getName())
-                .orElse(null);
-        if (user == null || (!user.getRole().equals(User.Role.ADMIN) && !user.getRole().equals(User.Role.MODERATOR))) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
-        if (theoryService.deleteTheory(id)) {
-            return ResponseEntity.noContent().build();
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    @GetMapping("/{id}")
+    public ResponseEntity<TheoryDtos.TheoryResponse> get(@PathVariable UUID id) {
+        Theory t = theoryRepository.findById(id).orElseThrow();
+        return ResponseEntity.ok(toResp(t));
     }
 
-    @GetMapping("/top/confidence")
-    public ResponseEntity<List<TheoryDTO>> getTopTheoriesByConfidence(
-            @RequestParam(defaultValue = "10") int limit) {
-
-        List<TheoryDTO> theories = theoryService.getAllTheories(1,limit, "size").toList();
-        return ResponseEntity.ok(theories);
-    }
-
-    @GetMapping("/top/contributors")
-    public ResponseEntity<List<TheoryDTO>> getTopTheoriesByContributors(
-            @RequestParam(defaultValue = "10") int limit) {
-
-        //List<TheoryDTO> theories = theoryService.getTopTheoriesByContributors(limit);
-        List<TheoryDTO> theories = theoryService.getAllTheories(1,limit, "size").toList();
-        return ResponseEntity.ok(theories);
-    }
-
-    @GetMapping("/categories")
-    public ResponseEntity<Theory.Category[]> getCategories() {
-        return ResponseEntity.ok(Theory.Category.values());
+    private static TheoryDtos.TheoryResponse toResp(Theory t) {
+        return TheoryDtos.TheoryResponse.builder()
+                .id(t.getId())
+                .title(t.getTitle())
+                .description(t.getDescription())
+                .domain(t.getDomain())
+                .tags(t.getTags())
+                .locked(t.isLocked())
+                .currentConfidence(t.getCurrentConfidence())
+                .build();
     }
 }

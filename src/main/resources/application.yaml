@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: madeInBrain
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driverClassName: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: create-only
+  h2:
+    console:
+      enabled: true
+
+logging:
+  level:
+    io.madeinbrain: DEBUG
